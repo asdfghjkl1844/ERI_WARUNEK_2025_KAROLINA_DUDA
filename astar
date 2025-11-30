@@ -1,0 +1,264 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <algorithm>
+#include <fstream>
+
+using namespace std;
+
+const int GRID_SIZE = 20;
+const int START_X = 19;
+const int START_Y = 0;
+const int END_X = 0;
+const int END_Y = 19;
+
+
+class Node {
+public:
+    int x, y, x_parent, y_parent;
+    double f, g, h;
+
+    Node(int new_x = 0, int new_y = 0) {
+        x = new_x;
+        y = new_y;
+        x_parent = -1;
+        y_parent = -1;
+        f = 0.0;
+        g = 0.0;
+        h = 0.0;
+    }
+};
+
+bool is_Accessible(vector<vector<int>> grid, int x, int y) {
+	if (x < 0 || x >= GRID_SIZE)
+		return false;
+	if (y < 0 || y >= GRID_SIZE)
+		return false;
+    if (grid[x][y] == 0)
+		return true;
+	else
+		return false;
+}
+
+double heuristic(int x, int y, int goal_x, int goal_y) {
+	int dx = x - goal_x;
+	int dy = y - goal_y;
+	return sqrt(dx*dx + dy*dy);
+}
+
+vector<Node> find_Path(vector<vector<int>> grid, Node start, Node finish)
+{
+    vector<Node> open_List;
+    vector<Node> closed_List;
+
+    closed_List.push_back(start);
+
+    {
+        int neighbours_x[4] = { -1, 1, 0, 0 };
+        int neighbours_y[4] = { 0, 0, -1, 1 };
+
+        for (int i = 0; i < 4; i++)
+        {
+            int nx = start.x + neighbours_x[i];
+            int ny = start.y + neighbours_y[i];
+
+            if (!is_Accessible(grid, nx, ny))
+                continue;
+
+            Node n(nx, ny);
+            n.g = 1.0;
+            n.h = heuristic(nx, ny, finish.x, finish.y);
+            n.f = n.g + n.h;
+            n.x_parent = start.x;
+            n.y_parent = start.y;
+
+            open_List.push_back(n);
+        }
+    }
+
+    while (!open_List.empty())
+    {
+        int best_index = 0;
+        double least_f = open_List[0].f;
+
+        for (int i = 1; i < open_List.size(); i++)
+        {
+            double current_f = open_List[i].f;
+
+            if (current_f < least_f)
+            {
+                least_f = current_f;
+                best_index = i;
+            }
+            else if (current_f == least_f && i > best_index)
+            {
+                best_index = i;
+            }
+        }
+
+        Node current = open_List[best_index];
+        open_List.erase(open_List.begin() + best_index);
+
+        if (current.x == finish.x && current.y == finish.y)
+        {
+            vector<Node> path;
+
+            while (true)
+            {
+                path.push_back(current);
+
+                if (current.x == start.x && current.y == start.y)
+                    break;
+
+                bool found_parent = false;
+
+                for (int i = 0; i < closed_List.size(); i++)
+                {
+                    if (closed_List[i].x == current.x_parent &&
+                        closed_List[i].y == current.y_parent)
+                    {
+                        current = closed_List[i];
+                        found_parent = true;
+                        break;
+                    }
+                }
+
+                if (!found_parent)
+                    break;
+            }
+
+            reverse(path.begin(), path.end());
+            return path;
+        }
+
+        closed_List.push_back(current);
+
+        int neighbours_x[4] = { -1, 1, 0, 0 };
+        int neighbours_y[4] = { 0, 0, -1, 1 };
+
+        for (int i = 0; i < 4; i++)
+        {
+            int new_x = current.x + neighbours_x[i];
+            int new_y = current.y + neighbours_y[i];
+
+            if (!is_Accessible(grid, new_x, new_y))
+                continue;
+
+            bool on_closed = false;
+            for (int j = 0; j < closed_List.size(); j++)
+            {
+                if (closed_List[j].x == new_x && closed_List[j].y == new_y)
+                {
+                    on_closed = true;
+                    break;
+                }
+            }
+            if (on_closed)
+                continue;
+
+            double new_g = current.g + 1.0;
+            double new_h = heuristic(new_x, new_y, finish.x, finish.y);
+            double new_f = new_g + new_h;
+
+            bool found_in_open = false;
+
+            for (int j = 0; j < open_List.size(); j++)
+            {
+                if (open_List[j].x == new_x && open_List[j].y == new_y)
+                {
+                    found_in_open = true;
+
+                    if (new_f < open_List[j].f)
+                    {
+                        open_List[j].f = new_f;
+                        open_List[j].g = new_g;
+                        open_List[j].h = new_h;
+                        open_List[j].x_parent = current.x;
+                        open_List[j].y_parent = current.y;
+                    }
+
+                    break;
+                }
+            }
+
+            if (!found_in_open)
+            {
+                Node neighbor(new_x, new_y);
+                neighbor.g = new_g;
+                neighbor.h = new_h;
+                neighbor.f = new_f;
+                neighbor.x_parent = current.x;
+                neighbor.y_parent = current.y;
+
+                open_List.push_back(neighbor);
+            }
+        }
+    }
+
+    return {};
+}
+
+
+void print_Grid(vector<vector<int>> grid, vector<Node> path)
+{
+    for (int x = 0; x < GRID_SIZE; x++)
+    {
+        for (int y = 0; y < GRID_SIZE; y++)
+        {
+            bool is_on_path = false;
+
+            for (int i = 0; i < path.size(); i++)
+            {
+                if (path[i].x == x && path[i].y == y)
+                {
+                    is_on_path = true;
+                    break;
+                }
+            }
+
+            if (is_on_path)
+                cout << "3 ";
+            else if (grid[x][y] == 0)
+                cout << "0 ";
+            else
+                cout << "5 ";
+        }
+        cout << endl;
+    }
+}
+int main()
+{
+    vector<vector<int>> grid;
+    grid.resize(GRID_SIZE, vector<int>(GRID_SIZE, 0));
+
+    ifstream file("grid.txt");
+    if (!file.is_open()) {
+        cout << "Nie udalo sie otworzyc pliku grid.txt" << endl;
+        return 1;
+    }
+
+    for (int x = 0; x < GRID_SIZE; x++)
+    {
+        for (int y = 0; y < GRID_SIZE; y++)
+        {
+            file >> grid[x][y];
+        }
+    }
+
+    file.close();
+
+    Node start(START_X, START_Y);
+    Node finish(END_X, END_Y);
+
+    vector<Node> path = find_Path(grid, start, finish);
+
+    if (path.empty()) {
+        cout << endl << "Brak sciezki." << endl;
+        return 0;
+    }
+
+    cout << endl << "Wynik:" << endl;
+    print_Grid(grid, path);
+
+    return 0;
+}
