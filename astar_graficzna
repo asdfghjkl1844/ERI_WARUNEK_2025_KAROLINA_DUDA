@@ -1,0 +1,244 @@
+#define SDL_MAIN_HANDLED
+#include <SDL.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <algorithm>
+#include <fstream>
+
+using namespace std;
+
+const int GRID_SIZE = 20;
+const int CELL = 30;
+const int WINDOW = GRID_SIZE * CELL;
+
+const int START_X = 19;
+const int START_Y = 0;
+const int END_X = 0;
+const int END_Y = 19;
+
+class Node {
+public:
+    int x, y, x_parent, y_parent;
+    double f, g, h;
+
+    Node(int new_x = 0, int new_y = 0) {
+        x = new_x;
+        y = new_y;
+        x_parent = -1;
+        y_parent = -1;
+        f = 0;
+        g = 0;
+        h = 0;
+    }
+};
+
+bool is_Accessible(vector<vector<int>>& grid, int x, int y) {
+    if (x < 0 || x >= GRID_SIZE) return false;
+    if (y < 0 || y >= GRID_SIZE) return false;
+    return grid[x][y] == 0;
+}
+
+double heuristic(int x, int y, int gx, int gy) {
+    return sqrt((x - gx) * (x - gx) + (y - gy) * (y - gy));
+}
+
+void draw(SDL_Renderer* r,
+    vector<vector<int>>& grid,
+    const vector<Node>& openList,
+    const vector<Node>& closedList,
+    const vector<Node>& finalPath)
+{
+    SDL_SetRenderDrawColor(r, 255, 240, 245, 255);
+    SDL_RenderClear(r);
+
+    auto isIn = [&](int x, int y, const vector<Node>& v) {
+        for (const auto& n : v)
+            if (n.x == x && n.y == y) return true;
+        return false;
+        };
+
+    for (int x = 0; x < GRID_SIZE; x++) {
+        for (int y = 0; y < GRID_SIZE; y++) {
+
+            SDL_Rect rect = { y * CELL, x * CELL, CELL, CELL };
+
+            // kolory
+            if (x == START_X && y == START_Y)
+                SDL_SetRenderDrawColor(r, 255, 102, 196, 255);         // start
+            else if (x == END_X && y == END_Y)
+                SDL_SetRenderDrawColor(r, 255, 20, 147, 255);          // meta
+            else if (isIn(x, y, finalPath))
+                SDL_SetRenderDrawColor(r, 255, 0, 127, 255);           // ścieżka
+            else if (isIn(x, y, closedList))
+                SDL_SetRenderDrawColor(r, 255, 111, 174, 255);         // closed
+            else if (isIn(x, y, openList))
+                SDL_SetRenderDrawColor(r, 255, 158, 196, 255);         // open
+            else if (grid[x][y] == 5)
+                SDL_SetRenderDrawColor(r, 139, 0, 69, 255);            // przeszkoda
+            else
+                SDL_SetRenderDrawColor(r, 255, 230, 240, 255);         // puste
+
+            SDL_RenderFillRect(r, &rect);
+
+            SDL_SetRenderDrawColor(r, 255, 200, 220, 255);
+            SDL_RenderDrawRect(r, &rect);
+        }
+    }
+
+    SDL_RenderPresent(r);
+}
+
+vector<Node> findPath(SDL_Renderer* renderer, vector<vector<int>>& grid, Node start, Node finish)
+{
+    vector<Node> openList;
+    vector<Node> closedList;
+
+    closedList.push_back(start);
+
+    int dx[4] = { -1,1,0,0 };
+    int dy[4] = { 0,0,-1,1 };
+
+    for (int i = 0; i < 4; i++) {
+        int xx = start.x + dx[i];
+        int yy = start.y + dy[i];
+        if (!is_Accessible(grid, xx, yy)) continue;
+
+        Node n(xx, yy);
+        n.g = 1;
+        n.h = heuristic(xx, yy, finish.x, finish.y);
+        n.f = n.g + n.h;
+        n.x_parent = start.x;
+        n.y_parent = start.y;
+
+        openList.push_back(n);
+    }
+
+    draw(renderer, grid, openList, closedList, {});
+    SDL_Delay(200);
+
+    while (!openList.empty()) {
+
+        int best = 0;
+        for (int i = 1; i < openList.size(); i++)
+            if (openList[i].f < openList[best].f)
+                best = i;
+
+        Node current = openList[best];
+        openList.erase(openList.begin() + best);
+        closedList.push_back(current);
+
+        draw(renderer, grid, openList, closedList, {});
+        SDL_Delay(60);
+
+        if (current.x == finish.x && current.y == finish.y) {
+
+            vector<Node> path;
+            while (true) {
+                path.push_back(current);
+
+                if (current.x == start.x && current.y == start.y)
+                    break;
+
+                for (auto& c : closedList)
+                    if (c.x == current.x_parent && c.y == current.y_parent) {
+                        current = c;
+                        break;
+                    }
+            }
+
+            reverse(path.begin(), path.end());
+            return path;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            int xx = current.x + dx[i];
+            int yy = current.y + dy[i];
+
+            if (!is_Accessible(grid, xx, yy)) continue;
+
+            bool isClosed = false;
+            for (auto& c : closedList)
+                if (c.x == xx && c.y == yy)
+                    isClosed = true;
+            if (isClosed) continue;
+
+            double new_g = current.g + 1;
+            double new_h = heuristic(xx, yy, finish.x, finish.y);
+            double new_f = new_g + new_h;
+
+            bool found = false;
+            for (auto& o : openList) {
+                if (o.x == xx && o.y == yy) {
+                    found = true;
+                    if (new_f < o.f) {
+                        o.f = new_f;
+                        o.g = new_g;
+                        o.h = new_h;
+                        o.x_parent = current.x;
+                        o.y_parent = current.y;
+                    }
+                }
+            }
+
+            if (!found) {
+                Node n(xx, yy);
+                n.f = new_f;
+                n.g = new_g;
+                n.h = new_h;
+                n.x_parent = current.x;
+                n.y_parent = current.y;
+                openList.push_back(n);
+            }
+        }
+    }
+
+    return {};
+}
+
+int main()
+{
+    SDL_Init(SDL_INIT_VIDEO);
+
+    SDL_Window* win = SDL_CreateWindow("A* Viz - Pink Edition",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        WINDOW, WINDOW, 0);
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+
+    vector<vector<int>> grid(GRID_SIZE, vector<int>(GRID_SIZE));
+
+    ifstream file("grid.txt");
+    if (!file.is_open()) {
+        cout << "Brak grid.txt\n";
+        return 1;
+    }
+
+    for (int i = 0; i < GRID_SIZE; i++)
+        for (int j = 0; j < GRID_SIZE; j++)
+            file >> grid[i][j];
+
+    Node start(START_X, START_Y);
+    Node finish(END_X, END_Y);
+
+    vector<Node> finalPath = findPath(renderer, grid, start, finish);
+
+    bool running = true;
+    SDL_Event e;
+
+    while (running) {
+        draw(renderer, grid, {}, {}, finalPath);
+
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) running = false;
+            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
+                running = false;
+        }
+
+        SDL_Delay(16);
+    }
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(win);
+    SDL_Quit();
+}
